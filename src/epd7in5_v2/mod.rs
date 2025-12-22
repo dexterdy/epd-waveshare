@@ -152,20 +152,21 @@ where
             panic!("Buffer is incorrect size. Expected: {expected_size}. Actual: {actual_size}.")
         }
 
-        let x_end = x + width;
-        let y_end = y + height;
+        let x_aligned = x & !0b111; // force to 8-bit-boundary
+        let x_end = x_aligned + width - 1;
+        let x_end_aligned = x_end | 0b111; // exclusive end boundary, ending with 3 1's (following spec)
 
-        // Horizontal coordinates - treat as raw pixel values, not byte banks
-        let hrst_upper = (x / 256) as u8;
-        let hrst_lower = (x % 256) as u8;
-        let hred_upper = (x_end / 256) as u8;
-        let hred_lower = (x_end % 256 - 1) as u8; // Note: subtraction happens after modulo
+        let hrst_upper = (x_aligned >> 8) as u8;
+        let hrst_lower = x_aligned as u8;
+        let hred_upper = (x_end_aligned >> 8) as u8;
+        let hred_lower = x_end_aligned as u8;
 
-        // Vertical coordinates - standard 10-bit split
-        let vrst_upper = (y / 256) as u8;
-        let vrst_lower = (y % 256) as u8;
-        let vred_upper = (y_end / 256) as u8;
-        let vred_lower = (y_end % 256 - 1) as u8;
+        let y_end = y + height - 1;
+
+        let vrst_upper = (y >> 8) as u8;
+        let vrst_lower = y as u8;
+        let vred_upper = (y_end >> 8) as u8;
+        let vred_lower = y_end as u8;
 
         let pt_scan = 0x01; // Gates scan both inside and outside of the partial window. (default)
 
@@ -180,9 +181,6 @@ where
         )?;
 
         self.update_frame(spi, buffer, delay)?;
-
-        self.cmd(spi, Command::DisplayRefresh)?;
-        self.wait_until_idle(spi, delay)?;
 
         self.cmd(spi, Command::PartialOut)?;
         Ok(())
