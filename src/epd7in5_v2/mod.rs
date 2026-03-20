@@ -39,7 +39,7 @@ pub const WIDTH: u32 = 800;
 /// Height of the display
 pub const HEIGHT: u32 = 480;
 /// Default Background Color
-pub const DEFAULT_BACKGROUND_COLOR: Color = Color::Black;
+pub const DEFAULT_BACKGROUND_COLOR: Color = Color::White;
 const IS_BUSY_LOW: bool = true;
 const SINGLE_BYTE_WRITE: bool = false;
 
@@ -146,6 +146,10 @@ where
         width: u32,
         height: u32,
     ) -> Result<(), SPI::Error> {
+        if width == 0 || height == 0 {
+            return Ok(());
+        }
+
         let expected_size = buffer_len(width as usize, height as usize);
         let actual_size = buffer.len();
         if actual_size != expected_size {
@@ -153,7 +157,7 @@ where
         }
 
         let x_aligned = x & !0b111; // force to 8-bit-boundary
-        let x_end = x_aligned + width - 1;
+        let x_end = x + width - 1;
         let x_end_aligned = x_end | 0b111; // exclusive end boundary, ending with 3 1's (following spec)
 
         let hrst_upper = (x_aligned >> 8) as u8;

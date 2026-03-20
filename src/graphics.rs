@@ -182,6 +182,7 @@ impl<
             height,
             &mut self.buffer,
             WIDTH,
+            HEIGHT,
             BYTECOUNT,
             BWRBIT,
         )
@@ -335,6 +336,7 @@ impl<'a, COLOR: ColorType + PixelColor> VarDisplay<'a, COLOR> {
             height,
             &mut self.buffer,
             self.width,
+            self.height,
             buffer_size,
             self.bwrbit,
         )
@@ -424,6 +426,8 @@ impl<'a, COLOR: ColorType + PixelColor> PartialFrame<'a, COLOR> {
     ///
     /// Parameters are documented in `Display` as they are the same as the const generics there.
     /// bwrbit should be false for non tricolor displays
+    ///
+    /// Panics when width or height is equal to 0.
     fn new(
         x: u32,
         y: u32,
@@ -431,9 +435,20 @@ impl<'a, COLOR: ColorType + PixelColor> PartialFrame<'a, COLOR> {
         height: u32,
         full_display_buffer: &'a mut [u8],
         full_display_width: u32,
+        full_display_height: u32,
         full_display_size: usize,
         bwrbit: bool,
     ) -> Self {
+        if width == 0 {
+            panic!("The width should be greater than 0");
+        }
+        if height == 0 {
+            panic!("The height should be greater than 0");
+        }
+        if x + width > full_display_width || y + height > full_display_height {
+            panic!("Partial window out of bounds of full display. Partial windows should fully lie within the bounds of the display.")
+        }
+
         let aligned_x = x & !0b111;
         let x_end = x + width - 1;
         let aligned_x_end = x_end | 0b111;
