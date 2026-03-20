@@ -239,7 +239,13 @@ where
         _delay: &mut DELAY,
         refresh_rate: Option<RefreshLut>,
     ) -> Result<(), SPI::Error> {
-        if Some(self.refresh) == refresh_rate {
+        let refresh_rate = if let Some(refresh_rate) = refresh_rate {
+            refresh_rate
+        } else {
+            RefreshLut::Full
+        };
+
+        if self.refresh == refresh_rate {
             return Ok(());
         }
 
@@ -253,11 +259,11 @@ where
         // which the manufacturer uses as custom LUT indices in OTP memory.
         // This is used in official demo's and libraries, but is not documented behavior.
         match refresh_rate {
-            Some(RefreshLut::Full) | None => {
+            RefreshLut::Full => {
                 // This disables custom LUT indices and uses normal temperature-based operation
                 self.cmd_with_data(spi, Command::CascadeSetting, &[0x00])?;
             }
-            Some(RefreshLut::Quick) => {
+            RefreshLut::Quick => {
                 // Booster power settings for quick LUT
                 self.cmd_with_data(spi, Command::BoosterSoftStart, &[0x27, 0x27, 0x18, 0x17])?;
                 // This selects a speed-optimized waveform: fewer voltage transitions mean faster updates
@@ -265,17 +271,17 @@ where
                 self.cmd_with_data(spi, Command::CascadeSetting, &[0x02])?;
                 self.cmd_with_data(spi, Command::ForceTemperature, &[0x5A])?;
             }
-            Some(RefreshLut::PartialRefresh) => {
+            RefreshLut::PartialRefresh => {
                 // This waveform applies gentle voltage transitions that update only the changed
                 // pixels without the full-screen flicker normally required to clear ghosting.
-                // Will accumulate hosting over many cycles - requires occasional full refresh to
+                // Will accumulate ghosting over many cycles - requires occasional full refresh to
                 // maintain image quality.
                 self.cmd_with_data(spi, Command::CascadeSetting, &[0x02])?;
                 self.cmd_with_data(spi, Command::ForceTemperature, &[0x6E])?;
             }
         }
 
-        self.refresh = refresh_rate.unwrap_or_default();
+        self.refresh = refresh_rate;
 
         Ok(())
     }
