@@ -4,9 +4,6 @@ use crate::color::{Color, ColorType, TriColor};
 use core::marker::PhantomData;
 use embedded_graphics_core::prelude::*;
 
-extern crate alloc;
-use alloc::vec::Vec;
-
 /// Display rotation, only 90° increments supported
 #[derive(Clone, Copy, Default)]
 pub enum DisplayRotation {
@@ -25,6 +22,21 @@ pub enum DisplayRotation {
 const fn line_bytes(width: u32, bits_per_pixel: usize) -> usize {
     // round to upper 8 bit count
     (width as usize * bits_per_pixel + 7) / 8
+}
+
+/// count the number of bytes needed for a partial window buffer
+const fn partial_frame_buffer_size(
+    x: u32,
+    width: u32,
+    height: u32,
+    bits_per_pixel: usize,
+) -> usize {
+    let aligned_x = x & !0b111;
+    let x_end = x + width - 1;
+    let aligned_x_end = x_end | 0b111;
+    let aligned_width = aligned_x_end - aligned_x + 1;
+    let buffer_size = height as usize * line_bytes(aligned_width, bits_per_pixel);
+    buffer_size
 }
 
 /// Display buffer used for drawing with embedded graphics
@@ -166,20 +178,32 @@ impl<
         );
     }
 
+    /// count the number of bytes needed for a partial window buffer
+    pub fn partial_frame_buffer_size(x: u32, width: u32, height: u32) -> usize {
+        partial_frame_buffer_size(
+            x,
+            width,
+            height,
+            COLOR::BITS_PER_PIXEL_PER_BUFFER * COLOR::BUFFER_COUNT,
+        )
+    }
+
     /// Creates a virtual partial frame
     /// Handles byte-alignment for you and keeps the full display buffer in sync
-    pub fn get_partial_frame<'a>(
+    pub fn get_partial_frame<'a, 'b>(
         &'a mut self,
+        buffer: &'b mut [u8],
         x: u32,
         y: u32,
         width: u32,
         height: u32,
-    ) -> PartialFrame<'a, COLOR> {
+    ) -> PartialFrame<'a, 'b, COLOR> {
         PartialFrame::new(
             x,
             y,
             width,
             height,
+            buffer,
             &mut self.buffer,
             WIDTH,
             HEIGHT,
@@ -272,7 +296,7 @@ impl<'a, COLOR: ColorType + PixelColor> VarDisplay<'a, COLOR> {
             rotation: DisplayRotation::default(),
             _color: PhantomData,
         };
-        // enfore some constraints dynamicly
+        // enforce some constraints dynamically
         if myself.buffer_size() > myself.buffer.len() {
             return Err(VarDisplayError::BufferTooSmall);
         }
@@ -319,21 +343,33 @@ impl<'a, COLOR: ColorType + PixelColor> VarDisplay<'a, COLOR> {
         );
     }
 
+    /// count the number of bytes needed for a partial window buffer
+    pub fn partial_frame_buffer_size(x: u32, width: u32, height: u32) -> usize {
+        partial_frame_buffer_size(
+            x,
+            width,
+            height,
+            COLOR::BITS_PER_PIXEL_PER_BUFFER * COLOR::BUFFER_COUNT,
+        )
+    }
+
     /// Creates a virtual partial frame
     /// Handles byte-alignment for you and keeps the full display buffer in sync
-    pub fn get_partial_frame<'b>(
+    pub fn get_partial_frame<'b, 'c>(
         &'b mut self,
+        buffer: &'c mut [u8],
         x: u32,
         y: u32,
         width: u32,
         height: u32,
-    ) -> PartialFrame<'b, COLOR> {
+    ) -> PartialFrame<'b, 'c, COLOR> {
         let buffer_size = self.buffer_size();
         PartialFrame::new(
             x,
             y,
             width,
             height,
+            buffer,
             &mut self.buffer,
             self.width,
             self.height,
@@ -360,7 +396,7 @@ impl VarDisplay<'_, TriColor> {
 /// byte-aligned relative to the full display.
 /// See display for documentation as everything is the same except that default
 /// is replaced by a `new` method.
-pub struct PartialFrame<'a, COLOR: ColorType + PixelColor> {
+pub struct PartialFrame<'a, 'b, COLOR: ColorType + PixelColor> {
     original_x: u32,
     aligned_x: u32,
     y: u32,
@@ -368,7 +404,7 @@ pub struct PartialFrame<'a, COLOR: ColorType + PixelColor> {
     aligned_width: u32,
     height: u32,
     bwrbit: bool,
-    buffer: Vec<u8>,
+    buffer: &'b mut [u8],
     full_display_buffer: &'a mut [u8],
     full_display_width: u32,
     full_display_size: usize,
@@ -392,7 +428,7 @@ pub struct PartialUpdateParameters<'a> {
 }
 
 /// For use with embedded_grahics
-impl<COLOR: ColorType + PixelColor> DrawTarget for PartialFrame<'_, COLOR> {
+impl<COLOR: ColorType + PixelColor> DrawTarget for PartialFrame<'_, '_, COLOR> {
     type Color = COLOR;
     type Error = core::convert::Infallible;
 
@@ -408,7 +444,7 @@ impl<COLOR: ColorType + PixelColor> DrawTarget for PartialFrame<'_, COLOR> {
 }
 
 /// For use with embedded_grahics
-impl<COLOR: ColorType + PixelColor> OriginDimensions for PartialFrame<'_, COLOR> {
+impl<COLOR: ColorType + PixelColor> OriginDimensions for PartialFrame<'_, '_, COLOR> {
     fn size(&self) -> Size {
         match self.rotation {
             DisplayRotation::Rotate0 | DisplayRotation::Rotate180 => {
@@ -421,7 +457,7 @@ impl<COLOR: ColorType + PixelColor> OriginDimensions for PartialFrame<'_, COLOR>
     }
 }
 
-impl<'a, COLOR: ColorType + PixelColor> PartialFrame<'a, COLOR> {
+impl<'a, 'b, COLOR: ColorType + PixelColor> PartialFrame<'a, 'b, COLOR> {
     /// Creates a byte-aligned buffer for you, based on X-coordinate and height.
     ///
     /// Parameters are documented in `Display` as they are the same as the const generics there.
@@ -433,6 +469,7 @@ impl<'a, COLOR: ColorType + PixelColor> PartialFrame<'a, COLOR> {
         y: u32,
         width: u32,
         height: u32,
+        buffer: &'b mut [u8],
         full_display_buffer: &'a mut [u8],
         full_display_width: u32,
         full_display_height: u32,
@@ -453,11 +490,6 @@ impl<'a, COLOR: ColorType + PixelColor> PartialFrame<'a, COLOR> {
         let x_end = x + width - 1;
         let aligned_x_end = x_end | 0b111;
         let aligned_width = aligned_x_end - aligned_x + 1;
-        let buffer_size = height as usize
-            * line_bytes(
-                aligned_width,
-                COLOR::BITS_PER_PIXEL_PER_BUFFER * COLOR::BUFFER_COUNT,
-            );
 
         Self {
             original_x: x,
@@ -467,7 +499,7 @@ impl<'a, COLOR: ColorType + PixelColor> PartialFrame<'a, COLOR> {
             aligned_width,
             height,
             bwrbit,
-            buffer: alloc::vec![0u8; buffer_size],
+            buffer,
             full_display_buffer,
             full_display_width,
             full_display_size,
@@ -582,7 +614,7 @@ impl<'a, COLOR: ColorType + PixelColor> PartialFrame<'a, COLOR> {
 }
 
 /// Some Monochrome specifics
-impl PartialFrame<'_, Color> {
+impl PartialFrame<'_, '_, Color> {
     /// To be used as parameters for the [`crate::traits::WaveshareDisplay::update_partial_frame`] function.
     ///
     /// Copies padding pixels from `from_buffer` to fill the byte-alignment offset on both left and right sides.
@@ -601,7 +633,7 @@ impl PartialFrame<'_, Color> {
 }
 
 /// Some Tricolor specifics
-impl PartialFrame<'_, TriColor> {
+impl PartialFrame<'_, '_, TriColor> {
     /// get black/white internal buffer to use it (to draw in epd)
     pub fn bw_buffer(&self) -> &[u8] {
         &self.buffer[..self.buffer_size() / 2]
