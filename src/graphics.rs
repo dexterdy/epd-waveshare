@@ -497,21 +497,22 @@ impl<'a, COLOR: ColorType + PixelColor> PartialFrame<'a, COLOR> {
     /// Set a specific pixel color on this display
     pub fn set_pixel(&mut self, mut pixel: Pixel<COLOR>) {
         // Calculate alignment offset based on physical X coordinate
-        let diff: i32 = (self.original_x - self.aligned_x).try_into().unwrap();
+        let offset_left = (self.original_x - self.aligned_x) as i32;
+        let offset_right = (self.aligned_width - self.original_width) as i32 - offset_left;
 
         // Apply offset to the appropriate virtual coordinate
         match self.rotation {
             DisplayRotation::Rotate0 => {
-                pixel.0.x += diff; // Add to X
+                pixel.0.x += offset_left;
             }
             DisplayRotation::Rotate90 => {
-                pixel.0.y += diff; // Add to Y
+                pixel.0.y += offset_right;
             }
             DisplayRotation::Rotate180 => {
-                pixel.0.x -= diff; // Subtract from X
+                pixel.0.x += offset_right;
             }
             DisplayRotation::Rotate270 => {
-                pixel.0.y -= diff; // Subtract from Y
+                pixel.0.y += offset_left;
             }
         }
 
