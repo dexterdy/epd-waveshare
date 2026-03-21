@@ -322,6 +322,6 @@ mod tests {
     fn epd_size() {
         assert_eq!(WIDTH, 800);
         assert_eq!(HEIGHT, 480);
-        assert_eq!(DEFAULT_BACKGROUND_COLOR, Color::Black);
+        assert_eq!(DEFAULT_BACKGROUND_COLOR, Color::White);
     }
 }
